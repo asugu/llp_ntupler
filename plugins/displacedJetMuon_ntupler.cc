@@ -7,6 +7,7 @@
 //         Created:  Thu, 26 March 2019 15:00:06 GMT
 
 #include "displacedJetMuon_ntupler.h"
+#include <algorithm>
 #include <fastjet/internal/base.hh>
 #include "fastjet/PseudoJet.hh"
 #include "fastjet/JetDefinition.hh"
@@ -159,6 +160,22 @@ displacedJetMuon_ntupler::displacedJetMuon_ntupler(const edm::ParameterSet& iCon
   cout << "isRAW = " << isRAW_ << "\n";
   cout << "isFastsim = " << isFastsim_ << "\n";
   cout << "isBParkAOD = " << isBParkAOD_ << "\n";
+
+  cscSimHitBXMin_ = iConfig.getUntrackedParameter<int>("cscSimHitBXMin", -999);
+  cscSimHitBXMax_ = iConfig.getUntrackedParameter<int>("cscSimHitBXMax", 999);
+  cscStripFiredOnly_ = iConfig.getUntrackedParameter<bool>("cscStripFiredOnly", false);
+  cout << "cscStripFiredOnly = " << cscStripFiredOnly_ << "\n";
+  cout << "cscSimHit BX window = [" << cscSimHitBXMin_ << ", " << cscSimHitBXMax_ << "]\n";
+
+  // DT sim/digi block: set here (not in the init list) so it is a no-op when off
+  saveDTSimDigi_ = iConfig.getUntrackedParameter<bool>("saveDTSimDigi", false);
+  dtSimHitElossMin_ = iConfig.getUntrackedParameter<double>("dtSimHitElossMin", 2e-6);
+  cout << "saveDTSimDigi = " << saveDTSimDigi_ << "\n";
+  if (saveDTSimDigi_) {
+    MuonDTSimHitsToken_ = consumes<vector<PSimHit>>(iConfig.getUntrackedParameter<edm::InputTag>("MuonDTSimHits", edm::InputTag("g4SimHits", "MuonDTHits", "SIM")));
+    MuonDTSimHitsXFToken_ = consumes<PCrossingFrame<PSimHit>>(iConfig.getUntrackedParameter<edm::InputTag>("MuonDTSimHitsXF", edm::InputTag("mix", "g4SimHitsMuonDTHits")));
+    MuonDTDigiToken_ = consumes<DTDigiCollection>(iConfig.getUntrackedParameter<edm::InputTag>("MuonDTDigi", edm::InputTag("simMuonDTDigis")));
+  }
 
   //declare the TFileService for output
   edm::Service<TFileService> fs;
@@ -592,6 +609,44 @@ void displacedJetMuon_ntupler::enableMuonSystemBranches()
     displacedJetMuonTree->Branch("cscSimHitProcessType", &cscSimHitProcessType, "cscSimHitProcessType[nCscSimHits]/I");
     displacedJetMuonTree->Branch("cscSimHitBX", &cscSimHitBX, "cscSimHitBX[nCscSimHits]/I");
     displacedJetMuonTree->Branch("cscSimHitOrigin", &cscSimHitOrigin, "cscSimHitOrigin[nCscSimHits]/I");
+
+    if (saveDTSimDigi_) {
+      displacedJetMuonTree->Branch("nDtDigis", &nDtDigis, "nDtDigis/I");
+      displacedJetMuonTree->Branch("dtDigiDetID", dtDigiDetID, "dtDigiDetID[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiWheel", dtDigiWheel, "dtDigiWheel[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiStation", dtDigiStation, "dtDigiStation[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiSector", dtDigiSector, "dtDigiSector[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiSuperLayer", dtDigiSuperLayer, "dtDigiSuperLayer[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiLayer", dtDigiLayer, "dtDigiLayer[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiWire", dtDigiWire, "dtDigiWire[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiNumber", dtDigiNumber, "dtDigiNumber[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiCountsTDC", dtDigiCountsTDC, "dtDigiCountsTDC[nDtDigis]/I");
+      displacedJetMuonTree->Branch("dtDigiTime", dtDigiTime, "dtDigiTime[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiCenterX", dtDigiCenterX, "dtDigiCenterX[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiCenterY", dtDigiCenterY, "dtDigiCenterY[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiCenterZ", dtDigiCenterZ, "dtDigiCenterZ[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiStartX", dtDigiStartX, "dtDigiStartX[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiStartY", dtDigiStartY, "dtDigiStartY[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiStartZ", dtDigiStartZ, "dtDigiStartZ[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiEndX", dtDigiEndX, "dtDigiEndX[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiEndY", dtDigiEndY, "dtDigiEndY[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiEndZ", dtDigiEndZ, "dtDigiEndZ[nDtDigis]/F");
+      displacedJetMuonTree->Branch("dtDigiLength", dtDigiLength, "dtDigiLength[nDtDigis]/F");
+
+      displacedJetMuonTree->Branch("nDtSimHits", &nDtSimHits, "nDtSimHits/I");
+      displacedJetMuonTree->Branch("dtSimHitDetID", dtSimHitDetID, "dtSimHitDetID[nDtSimHits]/I");
+      displacedJetMuonTree->Branch("dtSimHitX", dtSimHitX, "dtSimHitX[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitY", dtSimHitY, "dtSimHitY[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitZ", dtSimHitZ, "dtSimHitZ[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitPDG", dtSimHitPDG, "dtSimHitPDG[nDtSimHits]/I");
+      displacedJetMuonTree->Branch("dtSimHitTOF", dtSimHitTOF, "dtSimHitTOF[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitEloss", dtSimHitEloss, "dtSimHitEloss[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitPabs", dtSimHitPabs, "dtSimHitPabs[nDtSimHits]/F");
+      displacedJetMuonTree->Branch("dtSimHitParticleType", dtSimHitParticleType, "dtSimHitParticleType[nDtSimHits]/I");
+      displacedJetMuonTree->Branch("dtSimHitProcessType", dtSimHitProcessType, "dtSimHitProcessType[nDtSimHits]/I");
+      displacedJetMuonTree->Branch("dtSimHitBX", dtSimHitBX, "dtSimHitBX[nDtSimHits]/I");
+      displacedJetMuonTree->Branch("dtSimHitOrigin", dtSimHitOrigin, "dtSimHitOrigin[nDtSimHits]/I");
+    }
 
     displacedJetMuonTree->Branch("nCscSeg",&nCscSeg,"nCscSeg/I");
     displacedJetMuonTree->Branch("cscSegPhi",cscSegPhi,"cscSegPhi[nCscSeg]/F");
@@ -1725,6 +1780,8 @@ void displacedJetMuon_ntupler::resetMuonSystemBranches()
   nCscWireDigis = 0;
   nCscStripDigis = 0;
   nCscSimHits = 0;
+  nDtDigis = 0;
+  nDtSimHits = 0;
   for ( int i = 0; i < CSCDIGIARRAYSIZE; i++) {
     cscStripDigiDetID[i] = 0;
     cscStripDigiDetIDEndcap[i] = 0;
@@ -2780,6 +2837,13 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
 	 
       const CSCStripDigiCollection::Range &range = (*stripDetIt).second;
       for (CSCStripDigiCollection::const_iterator digiIt = range.first; digiIt != range.second; ++digiIt) {
+        if (cscStripFiredOnly_) {
+          // same "fired" definition as event_datamaker and MLCSCRecHitProducer
+          const std::vector<int>& adc = digiIt->getADCCounts();
+          if (adc.empty()) continue;
+          const auto mm = std::minmax_element(adc.begin(), adc.end());
+          if (*mm.second - *mm.first <= STRIP_DIGI_THRESHOLD) continue;
+        }
 //     cout << "-----------------------------------------------------------------" << endl;
 // 	cout << "CSC Strip "
 // 	     << id
@@ -3002,6 +3066,7 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
         auto fillCscSimHit = [&](const PSimHit& hit, int bx, int origin) {
             // cscSimHitElossMin <= 0 disables the cut
             if (cscSimHitElossMin_ > 0. && hit.energyLoss() <= cscSimHitElossMin_) return;
+            if (bx < cscSimHitBXMin_ || bx > cscSimHitBXMax_) return;
             if (simHitIndex >= CSCSIMHITARRAYSIZE) return;
 
             const CSCDetId id(hit.detUnitId());
@@ -3065,6 +3130,117 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
         }
       }
 
+  }
+
+  //*****************
+  //** DT digis + SimHits (saveDTSimDigi); mirrors the CSC block above
+  //*****************
+  if (saveDTSimDigi_) {
+    edm::Handle<DTDigiCollection> dtDigis;
+    iEvent.getByToken(MuonDTDigiToken_, dtDigis);
+    nDtDigis = 0;
+    if (dtDigis.isValid()) {
+      for (auto detIt = dtDigis->begin(); detIt != dtDigis->end(); ++detIt) {
+        const DTLayerId& lid = (*detIt).first;
+        const DTLayer* layer = dtG.layer(lid);
+        if (!layer) continue;
+        const DTTopology& topo = layer->specificTopology();
+        const DTDigiCollection::Range& range = (*detIt).second;
+        for (auto digiIt = range.first; digiIt != range.second; ++digiIt) {
+          if (nDtDigis >= DTDIGIARRAYSIZE) break;
+          const int wire = digiIt->wire();
+          // wires run along local y; wirePosition gives local x
+          const float x = topo.wirePosition(wire);
+          const float halfLen = 0.5f * topo.cellLenght();
+          const GlobalPoint c = layer->toGlobal(LocalPoint(x, 0., 0.));
+          const GlobalPoint s = layer->toGlobal(LocalPoint(x, -halfLen, 0.));
+          const GlobalPoint e = layer->toGlobal(LocalPoint(x, +halfLen, 0.));
+
+          dtDigiDetID[nDtDigis] = lid.rawId();
+          dtDigiWheel[nDtDigis] = lid.wheel();
+          dtDigiStation[nDtDigis] = lid.station();
+          dtDigiSector[nDtDigis] = lid.sector();
+          dtDigiSuperLayer[nDtDigis] = lid.superlayer();
+          dtDigiLayer[nDtDigis] = lid.layer();
+          dtDigiWire[nDtDigis] = wire;
+          dtDigiNumber[nDtDigis] = digiIt->number();
+          dtDigiCountsTDC[nDtDigis] = digiIt->countsTDC();
+          dtDigiTime[nDtDigis] = digiIt->time();
+          dtDigiCenterX[nDtDigis] = c.x();
+          dtDigiCenterY[nDtDigis] = c.y();
+          dtDigiCenterZ[nDtDigis] = c.z();
+          dtDigiStartX[nDtDigis] = s.x();
+          dtDigiStartY[nDtDigis] = s.y();
+          dtDigiStartZ[nDtDigis] = s.z();
+          dtDigiEndX[nDtDigis] = e.x();
+          dtDigiEndY[nDtDigis] = e.y();
+          dtDigiEndZ[nDtDigis] = e.z();
+          dtDigiLength[nDtDigis] = (e - s).mag();
+          ++nDtDigis;
+        }
+      }
+      if (nDtDigis >= DTDIGIARRAYSIZE)
+        edm::LogWarning("displacedJetMuon_ntupler") << "DT digi array full (" << DTDIGIARRAYSIZE << ") -- digis truncated.";
+    }
+
+    if (!isData_) {
+      edm::Handle<vector<PSimHit>> dtSimHits;
+      edm::Handle<PCrossingFrame<PSimHit>> dtSimHitsXF;
+      iEvent.getByToken(MuonDTSimHitsToken_, dtSimHits);
+      iEvent.getByToken(MuonDTSimHitsXFToken_, dtSimHitsXF);
+      nDtSimHits = 0;
+
+      // same filler for both paths, as for CSC
+      auto fillDtSimHit = [&](const PSimHit& hit, int bx, int origin) {
+        if (dtSimHitElossMin_ > 0. && hit.energyLoss() <= dtSimHitElossMin_) return;
+        if (nDtSimHits >= DTSIMHITARRAYSIZE) return;
+        // DT SimHits carry a wire-level DetId; geometry lives on the layer
+        const DTWireId wid(hit.detUnitId());
+        const DTLayer* layer = dtG.layer(wid.layerId());
+        if (!layer) return;
+        const GlobalPoint gp = layer->toGlobal(hit.localPosition());
+
+        dtSimHitDetID[nDtSimHits] = wid.rawId();
+        dtSimHitX[nDtSimHits] = gp.x();
+        dtSimHitY[nDtSimHits] = gp.y();
+        dtSimHitZ[nDtSimHits] = gp.z();
+        dtSimHitPDG[nDtSimHits] = hit.particleType();
+        dtSimHitTOF[nDtSimHits] = hit.timeOfFlight();
+        dtSimHitEloss[nDtSimHits] = hit.energyLoss();
+        dtSimHitPabs[nDtSimHits] = hit.pabs();
+        dtSimHitParticleType[nDtSimHits] = hit.particleType();
+        dtSimHitProcessType[nDtSimHits] = hit.processType();
+        dtSimHitBX[nDtSimHits] = bx;
+        dtSimHitOrigin[nDtSimHits] = origin;
+        ++nDtSimHits;
+      };
+
+      if (dtSimHitsXF.isValid()) {
+        // classical mixing: rebuild the CrossingFrame exactly as for CSC
+        const PCrossingFrame<PSimHit>& pcf = *dtSimHitsXF;
+        CrossingFrame<PSimHit> cf;
+        cf.setBunchRange(pcf.getBunchRange());
+        cf.setBunchSpace(pcf.getBunchSpace());
+        cf.setMaxNbSources(pcf.getMaxNbSources());
+        cf.setSubDet(pcf.getSubDet());
+        cf.setPileupOffsetsBcr(pcf.getPileupOffsetsBcr());
+        cf.setPileupOffsetsSource(pcf.getPileupOffsetsSource());
+        cf.addSignals(&pcf.getSignals(), pcf.getEventID());
+        cf.setPileups(pcf.getPileups());
+
+        MixCollection<PSimHit> col(&cf);
+        for (MixCollection<PSimHit>::MixItr it = col.begin(); it != col.end(); ++it) {
+          const int bx = it.bunch();
+          const int origin = it.getTrigger() ? 0 : (bx == 0 ? 1 : 2);
+          fillDtSimHit(*it, bx, origin);
+        }
+      } else if (dtSimHits.isValid()) {
+        for (const PSimHit& hit : *dtSimHits) fillDtSimHit(hit, 0, 0);
+      }
+
+      if (nDtSimHits >= DTSIMHITARRAYSIZE)
+        edm::LogWarning("displacedJetMuon_ntupler") << "DT SimHit array full (" << DTSIMHITARRAYSIZE << ") -- hits truncated.";
+    }
   }
 
 

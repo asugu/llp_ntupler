@@ -163,6 +163,10 @@ using namespace std;
 #include "DataFormats/CSCDigi/interface/CSCWireDigiCollection.h"
 #include "SimDataFormats/DigiSimLinks/interface/DTDigiSimLink.h"
 #include "SimDataFormats/TrackerDigiSimLink/interface/StripDigiSimLink.h"
+#include "DataFormats/DTDigi/interface/DTDigiCollection.h"
+#include "DataFormats/MuonDetId/interface/DTWireId.h"
+#include "Geometry/DTGeometry/interface/DTLayer.h"
+#include "Geometry/DTGeometry/interface/DTTopology.h"
 
 
 //ROOT includes
@@ -178,6 +182,9 @@ using namespace std;
 #define CSCDIGIARRAYSIZE 20000
 // classical mixing overlays ~815 minbias interactions per event
 #define CSCSIMHITARRAYSIZE 200000
+// DT sim/digi block (saveDTSimDigi), sized like the CSC ones
+#define DTDIGIARRAYSIZE 50000
+#define DTSIMHITARRAYSIZE 200000
 #define CSCRECHITARRAYSIZE 1000000
 #define RECHITARRAYSIZE 20000
 #define HORECHITARRAYSIZE 2000
@@ -308,6 +315,14 @@ protected:
   bool readMuonDigis_;
   // drop CSC SimHits with energyLoss <= this [GeV]
   double cscSimHitElossMin_;
+  // keep CSC SimHits only with BX in [min, max]; default keeps all
+  int cscSimHitBXMin_;
+  int cscSimHitBXMax_;
+  // save only strips with max(ADC)-min(ADC) > STRIP_DIGI_THRESHOLD; default saves all
+  bool cscStripFiredOnly_;
+  // DT SimHits (signal + crossing-frame PU) and DT digis; off by default
+  bool saveDTSimDigi_;
+  double dtSimHitElossMin_;
   int  llpId_;
 
   // Mapping of the HLT Triggers and Filters
@@ -349,6 +364,10 @@ protected:
   edm::EDGetTokenT<MuonDigiCollection<CSCDetId,CSCWireDigi> > MuonCSCWireDigiToken_;
   edm::EDGetTokenT<edm::DetSetVector<StripDigiSimLink> > MuonCSCStripDigiSimLinksToken_;
   edm::EDGetTokenT<edm::DetSetVector<StripDigiSimLink>> MuonCSCWireDigiSimLinksToken_;
+  // only consumed when saveDTSimDigi_ is set
+  edm::EDGetTokenT<vector<PSimHit> > MuonDTSimHitsToken_;
+  edm::EDGetTokenT<PCrossingFrame<PSimHit> > MuonDTSimHitsXFToken_;
+  edm::EDGetTokenT<DTDigiCollection> MuonDTDigiToken_;
 
 
 
@@ -987,6 +1006,44 @@ float pho_pfClusterSeedE[OBJECTARRAYSIZE];
   // BX and origin (0 hard scatter, 1 in-time PU, 2 OOT PU); 0 for premixed
   int   cscSimHitBX[CSCSIMHITARRAYSIZE];      // bunch crossing, 0 = in time
   int   cscSimHitOrigin[CSCSIMHITARRAYSIZE];  // 0 = hard scatter, 1 = in-time PU, 2 = OOT PU
+
+  // DT digis: one entry per fired wire (DTDigi), geometry from the DT layer
+  int nDtDigis;
+  int dtDigiDetID[DTDIGIARRAYSIZE];          // DTLayerId rawId
+  int dtDigiWheel[DTDIGIARRAYSIZE];
+  int dtDigiStation[DTDIGIARRAYSIZE];
+  int dtDigiSector[DTDIGIARRAYSIZE];
+  int dtDigiSuperLayer[DTDIGIARRAYSIZE];
+  int dtDigiLayer[DTDIGIARRAYSIZE];
+  int dtDigiWire[DTDIGIARRAYSIZE];
+  int dtDigiNumber[DTDIGIARRAYSIZE];         // hit index on this wire
+  int dtDigiCountsTDC[DTDIGIARRAYSIZE];
+  float dtDigiTime[DTDIGIARRAYSIZE];         // ns
+  float dtDigiCenterX[DTDIGIARRAYSIZE];
+  float dtDigiCenterY[DTDIGIARRAYSIZE];
+  float dtDigiCenterZ[DTDIGIARRAYSIZE];
+  float dtDigiStartX[DTDIGIARRAYSIZE];
+  float dtDigiStartY[DTDIGIARRAYSIZE];
+  float dtDigiStartZ[DTDIGIARRAYSIZE];
+  float dtDigiEndX[DTDIGIARRAYSIZE];
+  float dtDigiEndY[DTDIGIARRAYSIZE];
+  float dtDigiEndZ[DTDIGIARRAYSIZE];
+  float dtDigiLength[DTDIGIARRAYSIZE];
+
+  // DT SimHits: same content and BX/origin convention as cscSimHit*
+  int nDtSimHits;
+  int dtSimHitDetID[DTSIMHITARRAYSIZE];      // DTWireId rawId
+  float dtSimHitX[DTSIMHITARRAYSIZE];
+  float dtSimHitY[DTSIMHITARRAYSIZE];
+  float dtSimHitZ[DTSIMHITARRAYSIZE];
+  int dtSimHitPDG[DTSIMHITARRAYSIZE];
+  float dtSimHitTOF[DTSIMHITARRAYSIZE];
+  float dtSimHitEloss[DTSIMHITARRAYSIZE];
+  float dtSimHitPabs[DTSIMHITARRAYSIZE];
+  int   dtSimHitParticleType[DTSIMHITARRAYSIZE];
+  int   dtSimHitProcessType[DTSIMHITARRAYSIZE];
+  int   dtSimHitBX[DTSIMHITARRAYSIZE];
+  int   dtSimHitOrigin[DTSIMHITARRAYSIZE];
     
   int nCscSeg;
   float cscSegPhi[CSCRECHITARRAYSIZE];
