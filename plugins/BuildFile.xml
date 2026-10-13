@@ -1,4 +1,6 @@
 <use name="fastjet"/>
+<use name="SimDataFormats/GeneratorProducts"/>
+<use name="FWCore/MessageLogger"/>
 <use name="CommonTools/Utils"/>
 <use name="CommonTools/UtilAlgos"/>
 <use name="FWCore/Framework"/>
@@ -7,6 +9,7 @@
 <use name="DataFormats/PatCandidates"/>
 <use name="DataFormats/CSCDigi"/>
 <use name="SimDataFormats/TrackingHit"/>
+<use name="SimDataFormats/CrossingFrame"/>
 <use name="Geometry/CommonDetUnit"/>
 <use name="TrackingTools/Records"/>
 <use name="TrackingTools/TransientTrack"/>

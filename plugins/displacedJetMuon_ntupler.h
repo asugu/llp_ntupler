@@ -15,6 +15,7 @@ Description: Base class for miniAOD analysis with CRAB
 #include <vector>
 #include <tuple>
 #include <fstream>
+#include <atomic>
 #include <TRandom3.h>
 
 using namespace std;
@@ -150,6 +151,10 @@ using namespace std;
 #include "DataFormats/RPCRecHit/interface/RPCRecHit.h"
 #include "DataFormats/RPCRecHit/interface/RPCRecHitCollection.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHit.h"
+// classical-mixing SimHits with BX (premixed samples lack this)
+#include "SimDataFormats/CrossingFrame/interface/CrossingFrame.h"
+#include "SimDataFormats/CrossingFrame/interface/PCrossingFrame.h"
+#include "SimDataFormats/CrossingFrame/interface/MixCollection.h"
 #include "DataFormats/CSCDigi/interface/CSCComparatorDigi.h"
 #include "DataFormats/CSCDigi/interface/CSCComparatorDigiCollection.h"
 #include "DataFormats/CSCDigi/interface/CSCStripDigi.h"
@@ -171,7 +176,8 @@ using namespace std;
 //------ Array Size Constants ------//
 #define OBJECTARRAYSIZE 5000
 #define CSCDIGIARRAYSIZE 20000
-#define CSCSIMHITARRAYSIZE 20000
+// classical mixing overlays ~815 minbias interactions per event
+#define CSCSIMHITARRAYSIZE 200000
 #define CSCRECHITARRAYSIZE 1000000
 #define RECHITARRAYSIZE 20000
 #define HORECHITARRAYSIZE 2000
@@ -300,6 +306,8 @@ protected:
 
   bool enableAK8Jets_;
   bool readMuonDigis_;
+  // drop CSC SimHits with energyLoss <= this [GeV]
+  double cscSimHitElossMin_;
   int  llpId_;
 
   // Mapping of the HLT Triggers and Filters
@@ -334,6 +342,8 @@ protected:
 
   edm::EDGetTokenT<RPCRecHitCollection> rpcRecHitInputToken_;
   edm::EDGetTokenT<vector<PSimHit> > MuonCSCSimHitsToken_;
+  // mix:g4SimHitsMuonCSCHits is persisted as PCrossingFrame; used if present
+  edm::EDGetTokenT<PCrossingFrame<PSimHit> > MuonCSCSimHitsXFToken_;
   edm::EDGetTokenT<MuonDigiCollection<CSCDetId,CSCComparatorDigi> > MuonCSCComparatorDigiToken_;
   edm::EDGetTokenT<MuonDigiCollection<CSCDetId,CSCStripDigi> > MuonCSCStripDigiToken_;
   edm::EDGetTokenT<MuonDigiCollection<CSCDetId,CSCWireDigi> > MuonCSCWireDigiToken_;
@@ -548,6 +558,7 @@ protected:
   edm::Handle<DTRecHitCollection> dtCosmicRechits;
 
   edm::Handle<vector<PSimHit> > MuonCSCSimHits;
+  edm::Handle<PCrossingFrame<PSimHit> > MuonCSCSimHitsXF;
   edm::Handle<MuonDigiCollection<CSCDetId,CSCComparatorDigi> > MuonCSCComparatorDigi;
   edm::Handle<MuonDigiCollection<CSCDetId,CSCStripDigi> > MuonCSCStripDigi;
   edm::Handle<MuonDigiCollection<CSCDetId,CSCWireDigi>> MuonCSCWireDigi;
@@ -966,8 +977,16 @@ float pho_pfClusterSeedE[OBJECTARRAYSIZE];
   float cscSimHitX[CSCSIMHITARRAYSIZE];
   float cscSimHitY[CSCSIMHITARRAYSIZE];
   float cscSimHitZ[CSCSIMHITARRAYSIZE];
-  float cscSimHitE[CSCSIMHITARRAYSIZE];
+  // float cscSimHitE[CSCSIMHITARRAYSIZE];
   int cscSimHitPDG[CSCSIMHITARRAYSIZE];
+  float cscSimHitTOF[CSCSIMHITARRAYSIZE];
+  float cscSimHitEloss[CSCSIMHITARRAYSIZE];
+  float cscSimHitPabs[CSCSIMHITARRAYSIZE];
+  int   cscSimHitParticleType[CSCSIMHITARRAYSIZE];
+  int   cscSimHitProcessType[CSCSIMHITARRAYSIZE];
+  // BX and origin (0 hard scatter, 1 in-time PU, 2 OOT PU); 0 for premixed
+  int   cscSimHitBX[CSCSIMHITARRAYSIZE];      // bunch crossing, 0 = in time
+  int   cscSimHitOrigin[CSCSIMHITARRAYSIZE];  // 0 = hard scatter, 1 = in-time PU, 2 = OOT PU
     
   int nCscSeg;
   float cscSegPhi[CSCRECHITARRAYSIZE];

@@ -46,6 +46,7 @@ displacedJetMuon_ntupler::displacedJetMuon_ntupler(const edm::ParameterSet& iCon
   enableEcalRechits_(iConfig.getParameter<bool> ("enableEcalRechits")),
   readGenVertexTime_(iConfig.getParameter<bool> ("readGenVertexTime")),
   readMuonDigis_(iConfig.getParameter<bool> ("readMuonDigis")),
+  cscSimHitElossMin_(iConfig.getUntrackedParameter<double> ("cscSimHitElossMin", 2e-6)),
   triggerPathNamesFile_(iConfig.getParameter<string> ("triggerPathNamesFile")),
   eleHLTFilterNamesFile_(iConfig.getParameter<string> ("eleHLTFilterNamesFile")),
   muonHLTFilterNamesFile_(iConfig.getParameter<string> ("muonHLTFilterNamesFile")),
@@ -60,6 +61,7 @@ displacedJetMuon_ntupler::displacedJetMuon_ntupler(const edm::ParameterSet& iCon
   dtCosmicRechitInputToken_(consumes<DTRecHitCollection>(edm::InputTag("dt1DCosmicRecHits"))),
   rpcRecHitInputToken_(consumes<RPCRecHitCollection>(edm::InputTag("rpcRecHits"))),
   MuonCSCSimHitsToken_(consumes<vector<PSimHit>>(iConfig.getParameter<edm::InputTag>("MuonCSCSimHits"))),
+  MuonCSCSimHitsXFToken_(consumes<PCrossingFrame<PSimHit>>(iConfig.getUntrackedParameter<edm::InputTag>("MuonCSCSimHitsXF", edm::InputTag("mix", "g4SimHitsMuonCSCHits")))),
   MuonCSCComparatorDigiToken_(consumes<MuonDigiCollection<CSCDetId,CSCComparatorDigi>>(iConfig.getParameter<edm::InputTag>("MuonCSCComparatorDigi"))),
   MuonCSCStripDigiToken_(consumes<CSCStripDigiCollection>(iConfig.getParameter<edm::InputTag>("MuonCSCStripDigi"))),
   MuonCSCWireDigiToken_(consumes<CSCWireDigiCollection>(iConfig.getParameter<edm::InputTag>("MuonCSCWireDigi"))),
@@ -581,8 +583,15 @@ void displacedJetMuon_ntupler::enableMuonSystemBranches()
     displacedJetMuonTree->Branch("cscSimHitX", &cscSimHitX, "cscSimHitX[nCscSimHits]/F");
     displacedJetMuonTree->Branch("cscSimHitY", &cscSimHitY, "cscSimHitY[nCscSimHits]/F");
     displacedJetMuonTree->Branch("cscSimHitZ", &cscSimHitZ, "cscSimHitZ[nCscSimHits]/F");
-    displacedJetMuonTree->Branch("cscSimHitE", &cscSimHitE, "cscSimHitE[nCscSimHits]/F");
+    // displacedJetMuonTree->Branch("cscSimHitE", &cscSimHitE, "cscSimHitE[nCscSimHits]/F");
     displacedJetMuonTree->Branch("cscSimHitPDG", &cscSimHitPDG, "cscSimHitPDG[nCscSimHits]/I");
+    displacedJetMuonTree->Branch("cscSimHitTOF", &cscSimHitTOF, "cscSimHitTOF[nCscSimHits]/F");
+    displacedJetMuonTree->Branch("cscSimHitEloss", &cscSimHitEloss, "cscSimHitEloss[nCscSimHits]/F");
+    displacedJetMuonTree->Branch("cscSimHitPabs", &cscSimHitPabs, "cscSimHitPabs[nCscSimHits]/F");
+    displacedJetMuonTree->Branch("cscSimHitParticleType", &cscSimHitParticleType, "cscSimHitParticleType[nCscSimHits]/I");
+    displacedJetMuonTree->Branch("cscSimHitProcessType", &cscSimHitProcessType, "cscSimHitProcessType[nCscSimHits]/I");
+    displacedJetMuonTree->Branch("cscSimHitBX", &cscSimHitBX, "cscSimHitBX[nCscSimHits]/I");
+    displacedJetMuonTree->Branch("cscSimHitOrigin", &cscSimHitOrigin, "cscSimHitOrigin[nCscSimHits]/I");
 
     displacedJetMuonTree->Branch("nCscSeg",&nCscSeg,"nCscSeg/I");
     displacedJetMuonTree->Branch("cscSegPhi",cscSegPhi,"cscSegPhi[nCscSeg]/F");
@@ -1316,6 +1325,8 @@ void displacedJetMuon_ntupler::loadEvent(const edm::Event& iEvent)//load all min
   iEvent.getByToken(rpcRecHitInputToken_,rpcRecHits);
   if (!isData_) {
     iEvent.getByToken(MuonCSCSimHitsToken_, MuonCSCSimHits);
+    // absent in premixed files -> falls back to MuonCSCSimHits
+    iEvent.getByToken(MuonCSCSimHitsXFToken_, MuonCSCSimHitsXF);
     if (readMuonDigis_) {
       iEvent.getByToken(MuonCSCStripDigiToken_, MuonCSCStripDigi);
       iEvent.getByToken(MuonCSCWireDigiToken_, MuonCSCWireDigi);
@@ -1774,8 +1785,15 @@ void displacedJetMuon_ntupler::resetMuonSystemBranches()
   for (int i = 0; i < CSCSIMHITARRAYSIZE; i++) {
     cscSimHitDetID[i] = 0;
     cscSimHitX[i] = cscSimHitY[i] = cscSimHitZ[i] = 0.;
-    cscSimHitE[i] = 0.;
+    // cscSimHitE[i] = 0.;
     cscSimHitPDG[i] = 0;
+    cscSimHitTOF[i] = 0.;
+    cscSimHitEloss[i] = 0.;
+    cscSimHitPabs[i] = 0.;
+    cscSimHitParticleType[i] = 0;
+    cscSimHitProcessType[i] = 0;
+    cscSimHitBX[i] = 0;
+    cscSimHitOrigin[i] = 0;
   }
 
   for ( int i = 0; i < CSCRECHITARRAYSIZE; i++) {
@@ -2774,7 +2792,8 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
 // 	     << " Digi " << stripDigiIndex << " | Strip " << digiIt->getStrip() << "\n";
           
           
-	cscStripDigiDetID[stripDigiIndex] = tempDetId;
+	// cscStripDigiDetID[stripDigiIndex] = tempDetId;
+  cscStripDigiDetID[stripDigiIndex] = id.rawId();
 	cscStripDigiDetIDEndcap[stripDigiIndex] = id.endcap();
 	cscStripDigiDetIDStation[stripDigiIndex] = id.station();
 	cscStripDigiDetIDRing[stripDigiIndex] = id.ring();
@@ -2940,7 +2959,8 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
 //         std::cout << "  Length : " << wireLength << " cm" << std::endl;
 
 
-        cscWireDigiDetID[wireDigiIndex] = tempDetId;
+        // cscWireDigiDetID[wireDigiIndex] = tempDetId;
+        cscWireDigiDetID[wireDigiIndex] = id.rawId();
         cscWireDigiDetIDEndcap[wireDigiIndex] = id.endcap();
         cscWireDigiDetIDStation[wireDigiIndex] = id.station();
         cscWireDigiDetIDRing[wireDigiIndex] = id.ring();
@@ -2978,32 +2998,71 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
         nCscSimHits = 0;
         int simHitIndex = 0;
 
-        for (std::vector<PSimHit>::const_iterator simIt = MuonCSCSimHits->begin(); 
-            simIt != MuonCSCSimHits->end(); ++simIt) {
+        // same filler for mixed and premixed paths
+        auto fillCscSimHit = [&](const PSimHit& hit, int bx, int origin) {
+            // cscSimHitElossMin <= 0 disables the cut
+            if (cscSimHitElossMin_ > 0. && hit.energyLoss() <= cscSimHitElossMin_) return;
+            if (simHitIndex >= CSCSIMHITARRAYSIZE) return;
 
-            if (simHitIndex >= CSCSIMHITARRAYSIZE) break;
-
-            const CSCDetId id(simIt->detUnitId());
-            const LocalPoint lp = simIt->localPosition();
-            GlobalPoint gp = cscG.idToDet(id)->surface().toGlobal(lp);
-            // GlobalPoint gp = cscG->idToDet(id)->surface().toGlobal(simIt->localPosition());
+            const CSCDetId id(hit.detUnitId());
+            // idToDet can return null for unmapped DetIds
+            const GeomDet* det = cscG.idToDet(id);
+            if (!det) return;
+            const LocalPoint lp = hit.localPosition();
+            GlobalPoint gp = det->surface().toGlobal(lp);
 
             cscSimHitDetID[simHitIndex]        = id.rawId();
-            // cscSimHitDetIDEndcap[simHitIndex]  = id.endcap();
-            // cscSimHitDetIDStation[simHitIndex] = id.station();
-            // cscSimHitDetIDRing[simHitIndex]    = id.ring();
-            // cscSimHitDetIDChamber[simHitIndex] = id.chamber();
-            // cscSimHitDetIDLayer[simHitIndex]   = id.layer();
 
             cscSimHitX[simHitIndex] = gp.x();
             cscSimHitY[simHitIndex] = gp.y();
             cscSimHitZ[simHitIndex] = gp.z();
-            cscSimHitE[simHitIndex] = simIt->energyLoss();
-            cscSimHitPDG[simHitIndex] = simIt->particleType();
+            cscSimHitPDG[simHitIndex] = hit.particleType();
+            cscSimHitTOF[simHitIndex] = hit.timeOfFlight(); // ns
+            cscSimHitEloss[simHitIndex] = hit.energyLoss();
+            cscSimHitPabs[simHitIndex] = hit.pabs();
+            cscSimHitParticleType[simHitIndex] = hit.particleType();
+            cscSimHitProcessType[simHitIndex] = hit.processType();
+            cscSimHitBX[simHitIndex] = bx;
+            cscSimHitOrigin[simHitIndex] = origin;
 
             ++nCscSimHits;
             ++simHitIndex;
-          }
+        };
+
+        if (MuonCSCSimHitsXF.isValid()) {
+            // PCrossingFrame can't be iterated: rebuild a local CrossingFrame (holds pointers into the handle)
+            // BX comes from MixItr::bunch(), not PSimHit::eventId() (always 0 for PU)
+            const PCrossingFrame<PSimHit>& pcf = *MuonCSCSimHitsXF;
+
+            CrossingFrame<PSimHit> cf;
+            cf.setBunchRange(pcf.getBunchRange());
+            cf.setBunchSpace(pcf.getBunchSpace());
+            cf.setMaxNbSources(pcf.getMaxNbSources());
+            cf.setSubDet(pcf.getSubDet());
+            cf.setPileupOffsetsBcr(pcf.getPileupOffsetsBcr());
+            cf.setPileupOffsetsSource(pcf.getPileupOffsetsSource());
+            cf.addSignals(&pcf.getSignals(), pcf.getEventID());
+            cf.setPileups(pcf.getPileups());
+
+            MixCollection<PSimHit> col(&cf);
+            for (MixCollection<PSimHit>::MixItr it = col.begin(); it != col.end(); ++it) {
+                const int bx = it.bunch();          // 0 for signal and in-time PU
+                const int origin = it.getTrigger() ? 0 : (bx == 0 ? 1 : 2);
+                fillCscSimHit(*it, bx, origin);
+            }
+        } else if (MuonCSCSimHits.isValid()) {
+            // Premixed (or no-PU) sample: hard-scatter SimHits only, all in time.
+            for (std::vector<PSimHit>::const_iterator simIt = MuonCSCSimHits->begin();
+                simIt != MuonCSCSimHits->end(); ++simIt) {
+                fillCscSimHit(*simIt, 0, 0);
+            }
+        }
+
+        if (simHitIndex >= CSCSIMHITARRAYSIZE) {
+            edm::LogWarning("displacedJetMuon_ntupler")
+                << "CSC SimHit array full (" << CSCSIMHITARRAYSIZE
+                << ") -- hits truncated. Raise CSCSIMHITARRAYSIZE or cscSimHitElossMin.";
+        }
       }
 
   }
@@ -3227,8 +3286,10 @@ bool displacedJetMuon_ntupler::fillMuonSystem(const edm::Event& iEvent, const ed
 	LocalPoint  cscRecHitLocalPosition       = cscRechit.localPosition();
 	// LocalError  segmentLocalDirectionError = iDT->localDirectionError();
 	CSCDetId cscdetid = cscRechit.cscDetId();
-	cscRechitsDetId[ncscRechits] = CSCDetId::rawIdMaker(CSCDetId::endcap(cscdetid), CSCDetId::station(cscdetid), CSCDetId::ring(cscdetid), CSCDetId::chamber(cscdetid), CSCDetId::layer(cscdetid));
-	int endcap = CSCDetId::endcap(cscdetid) == 1 ? 1 : -1;
+	// cscRechitsDetId[ncscRechits] = CSCDetId::rawIdMaker(CSCDetId::endcap(cscdetid), CSCDetId::station(cscdetid), CSCDetId::ring(cscdetid), CSCDetId::chamber(cscdetid), CSCDetId::layer(cscdetid));
+  cscRechitsDetId[ncscRechits] = cscdetid.rawId();  // ← just this line changes
+
+  int endcap = CSCDetId::endcap(cscdetid) == 1 ? 1 : -1;
 	// const CSCChamber* cscchamber = cscG.chamber(cscdetid);
 	// if (cscchamber) {
 	//   GlobalPoint globalPosition = cscchamber->toGlobal(cscRecHitLocalPosition);
@@ -5825,6 +5886,18 @@ bool displacedJetMuon_ntupler::fillElectrons(const edm::Event& iEvent)
 };
 bool displacedJetMuon_ntupler::fillPileUp()
 {
+  // label differs premix (mixData) vs classical (addPileupInfo); warn, keep nBunchXing=0
+  if (!puInfo.isValid())
+  {
+    static std::atomic<bool> warned{false};
+    if (!warned.exchange(true))
+      edm::LogWarning("displacedJetMuon_ntupler")
+        << "PileupSummaryInfo not found -- check the puInfo InputTag "
+        << "(addPileupInfo for classical mixing, mixData for premix). "
+        << "nBunchXing/nPU will be empty.";
+    return true;
+  }
+
   for(const PileupSummaryInfo &pu : *puInfo)
   {
     BunchXing[nBunchXing] = pu.getBunchCrossing();
